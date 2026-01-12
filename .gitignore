@@ -50,3 +50,13 @@ env/
 # Sistema operativo
 .DS_Store
 Thumbs.db
+
+# Datos procesados
+data/processed/*
+!data/processed/.gitkeep
+
+
+
+# data/raw/*
+
+# !data/raw/.gitkeep
