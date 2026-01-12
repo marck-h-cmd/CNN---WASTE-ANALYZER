@@ -1,0 +1,250 @@
+/* Estilos personalizados para el dashboard Streamlit */
+
+/* Tipografía */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Header principal */
+.main-header {
+    font-size: 2.5rem;
+    color: #2E8B57;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-weight: 700;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Subheaders */
+.sub-header {
+    font-size: 1.8rem;
+    color: #3CB371;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    border-bottom: 3px solid #3CB371;
+    padding-bottom: 0.5rem;
+}
+
+/* Tarjetas de métricas */
+.metric-card {
+    background: linear-gradient(135deg, #f8fff9 0%, #e8f5e9 100%);
+    padding: 1.5rem;
+    border-radius: 15px;
+    border-left: 5px solid #2E8B57;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    margin: 1rem 0;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 20px rgba(0,0,0,0.15);
+}
+
+/* Badges de clases */
+.class-badge {
+    display: inline-block;
+    padding: 0.5rem 1.2rem;
+    border-radius: 25px;
+    font-weight: 600;
+    margin: 0.3rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    text-align: center;
+    min-width: 120px;
+}
+
+.class-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+/* Botones */
+.stButton > button {
+    background: linear-gradient(135deg, #2E8B57 0%, #3CB371 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 10px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px rgba(46, 139, 87, 0.3);
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 15px rgba(46, 139, 87, 0.4);
+    background: linear-gradient(135deg, #3CB371 0%, #4ECDC4 100%);
+}
+
+/* Sidebar */
+.css-1d391kg {
+    background: linear-gradient(135deg, #f8fff9 0%, #e8f5e9 100%);
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 2px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    background-color: #f0f8ff;
+    border-radius: 10px 10px 0px 0px;
+    gap: 1px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #2E8B57;
+    color: white;
+}
+
+/* Alertas */
+.success-box {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin: 1rem 0;
+    border-left: 5px solid #28a745;
+}
+
+.warning-box {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin: 1rem 0;
+    border-left: 5px solid #ffc107;
+}
+
+.error-box {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin: 1rem 0;
+    border-left: 5px solid #dc3545;
+}
+
+.info-box {
+    background-color: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin: 1rem 0;
+    border-left: 5px solid #17a2b8;
+}
+
+/* Tablas */
+.dataframe {
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+/* Inputs */
+.stTextInput > div > div > input {
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    transition: border-color 0.3s ease;
+}
+
+.stTextInput > div > div > input:focus {
+    border-color: #2E8B57;
+    box-shadow: 0 0 0 2px rgba(46, 139, 87, 0.2);
+}
+
+.stSelectbox > div > div {
+    border-radius: 8px;
+}
+
+/* Progress bars */
+.stProgress > div > div > div > div {
+    background-color: #2E8B57;
+}
+
+/* Expanders */
+.streamlit-expanderHeader {
+    background-color: #f8fff9;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.streamlit-expanderContent {
+    background-color: #f8fff9;
+    border-radius: 0 0 8px 8px;
+}
+
+/* Radio buttons */
+.stRadio > div {
+    flex-direction: row;
+    gap: 20px;
+}
+
+.stRadio > div > label {
+    background-color: #f0f8ff;
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.stRadio > div > label:hover {
+    border-color: #2E8B57;
+    background-color: #e8f5e9;
+}
+
+.stRadio > div > label[data-checked="true"] {
+    background-color: #2E8B57;
+    color: white;
+    border-color: #2E8B57;
+}
+
+/* Sliders */
+.stSlider > div > div > div {
+    background-color: #2E8B57;
+}
+
+/* Checkboxes */
+.stCheckbox > label {
+    font-weight: 500;
+}
+
+/* Tooltips */
+[data-testid="stTooltip"] {
+    background-color: #2E8B57 !important;
+    color: white !important;
+    border-radius: 8px !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .main-header {
+        font-size: 2rem;
+    }
+    
+    .sub-header {
+        font-size: 1.5rem;
+    }
+    
+    .class-badge {
+        min-width: 100px;
+        padding: 0.4rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .metric-card {
+        padding: 1rem;
+    }
+}
