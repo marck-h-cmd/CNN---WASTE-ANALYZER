@@ -1,0 +1,78 @@
+classes:
+- battery
+- biological
+- brown-glass
+- cardboard
+- clothes
+- green-glass
+- metal
+- paper
+- plastic
+- shoes
+- trash
+- white-glass
+dashboard:
+  enable_batch_processing: true
+  enable_camera: true
+  enable_model_comparison: true
+  enable_report_generation: true
+  max_file_size_mb: 10
+  supported_formats:
+  - .jpg
+  - .jpeg
+  - .png
+  - .bmp
+  - .tiff
+  theme: light
+  title: "Sistema Inteligente de Clasificaci\xC3\xB3n de Residuos"
+model:
+  input_size: 224
+  name: yolov8n
+  num_classes: 12
+  pretrained: true
+  type: classification
+monitoring:
+  generate_reports: true
+  log_predictions: true
+  save_classification_report: true
+  save_confusion_matrix: true
+  save_training_history: true
+paths:
+  assets_dir: ./assets
+  data_processed: ./data/processed
+  data_raw: ./data/raw
+  models_dir: ./models
+  pretrained_models: ./models/pretrained
+  results_dir: ./results
+  trained_models: ./models/trained
+  uploads_dir: ./data/uploads
+performance:
+  cache_predictions: true
+  max_workers: 4
+  optimize_model: true
+  use_gpu: true
+prediction:
+  confidence_threshold: 0.25
+  save_predictions: true
+  save_visualizations: true
+  top_k_predictions: 5
+training:
+  augment: true
+  batch_size: 32
+  degrees: 45
+  device: auto
+  dropout: 0.2
+  epochs: 50
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  learning_rate: 0.001
+  momentum: 0.937
+  patience: 10
+  scale: 0.5
+  seed: 42
+  translate: 0.1
+  validation_split: 0.2
+  warmup_epochs: 3
+  weight_decay: 0.0005
+  workers: 4
