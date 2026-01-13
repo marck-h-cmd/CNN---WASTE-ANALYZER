@@ -53,19 +53,18 @@ class ModelTrainer:
         
         # Verificar datos procesados
         print("path", self.config['paths']['data_processed'])
-        data_yaml = Path(self.config['paths']['data_processed']) / 'dataset.yaml'
-        if not data_yaml.exists():
-            raise FileNotFoundError(f"No se encontró dataset.yaml en {data_yaml}")
+        data_dir = Path(self.config['paths']['data_processed'])
+
         
         print(f"🚀 Iniciando entrenamiento con:")
-        print(f"   Dataset: {data_yaml}")
         print(f"   Épocas: {epochs}")
         print(f"   Batch size: {batch_size}")
         print(f"   Learning rate: {learning_rate}")
         print(f"   Dispositivo: {device}")
         
         # Cargar modelo preentrenado
-        model_name = f"{self.config['model']['name']}-cls"
+        model_name = "yolov8n-cls"
+        self.model = YOLO(f"{model_name}.pt")
         print(f"📦 Cargando modelo: {model_name}")
         
         try:
@@ -80,14 +79,19 @@ class ModelTrainer:
                 raise
         
         # Configurar dispositivo
-        if device == 'auto':
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # Blindaje total de device
+        if device not in ['cpu', 'cuda']:
+            device = 'cpu'
+        
+        if device == 'cuda' and not torch.cuda.is_available():
+            device = 'cpu'
+
         
         print(f"💻 Usando dispositivo: {device}")
         
         # Parámetros de entrenamiento
         train_args = {
-            'data': str(data_yaml),
+            'data': str(data_dir),
             'epochs': epochs,
             'batch': batch_size,
             'imgsz': self.config['model']['input_size'],

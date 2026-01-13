@@ -8,6 +8,28 @@ import yaml
 # Añadir directorio src al path
 sys.path.append(str(Path(__file__).parent / "src"))
 
+
+# FORZAR CPU Y LIMPIAR CUDA
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["YOLO_DISABLE_SIGNAL_HANDLERS"] = "1"
+os.environ["YOLO_VERBOSE"] = "False"
+
+# Mapeo UI (Español) -> Dataset
+CLASS_LABELS = {
+    "batería": "battery",
+    "biológico": "biological",
+    "vidrio marrón": "brown-glass",
+    "cartón": "cardboard",
+    "ropa": "clothes",
+    "vidrio verde": "green-glass",
+    "metal": "metal",
+    "papel": "paper",
+    "plástico": "plastic",
+    "zapatos": "shoes",
+    "basura": "trash",
+    "vidrio blanco": "white-glass",
+}
+
 # Configuración de página
 st.set_page_config(
     page_title="Clasificador de Residuos Inteligente",
@@ -356,7 +378,7 @@ def show_data_management_page():
             with col2:
                 # Contar imágenes por clase
                 st.write("**Conteo de Imágenes:**")
-                for folder in sorted(folders)[:6]:  # Mostrar primeras 6
+                for folder in sorted(folders)[:12]:  # Mostrar  las 12 clases
                     folder_path = raw_path / folder
                     images = [f for f in os.listdir(folder_path) 
                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
@@ -493,21 +515,29 @@ def show_data_management_page():
         st.markdown("### 🔍 Visualizar Imágenes del Dataset")
         
         # Seleccionar clase
-        classes = config['classes']
-        selected_class = st.selectbox("Selecciona una clase:", classes)
+        selected_label = st.selectbox(
+            "Selecciona una clase para ver imágenes:",
+             list(CLASS_LABELS.keys())
+        )
         
-        if selected_class:
-            # Mostrar imágenes de ejemplo
-            sample_images = preparer.get_sample_images(selected_class, num_samples=6)
+        if selected_label:
+            selected_class = CLASS_LABELS[selected_label]
             
-            if sample_images:
-                st.markdown(f"#### Imágenes de: {selected_class}")
+            if selected_label :
+                selected_class = CLASS_LABELS[selected_label]
+
+                sample_images = preparer.get_sample_images(
+                selected_class, 
+                 num_samples=6
+                )
+                if sample_images:
+                    st.markdown(f"#### Imágenes de: {selected_label}")
                 
                 # Mostrar en grid
                 cols = st.columns(3)
                 for idx, img_path in enumerate(sample_images):
                     with cols[idx % 3]:
-                        st.image(str(img_path), use_column_width=True)
+                        st.image(str(img_path), use_container_width=True)
                         st.caption(f"{img_path.name}")
             else:
                 st.info(f"No hay imágenes para la clase {selected_class}")
