@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 import yaml
-
+#go2
 # Añadir directorio src al path
 sys.path.append(str(Path(__file__).parent / "src"))
 
