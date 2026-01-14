@@ -27,7 +27,7 @@ dashboard:
   title: "Sistema Inteligente de Clasificaci\xC3\xB3n de Residuos"
 model:
   input_size: 224
-  name: nano
+  name: yolov8n
   num_classes: 12
   pretrained: true
   type: classification
