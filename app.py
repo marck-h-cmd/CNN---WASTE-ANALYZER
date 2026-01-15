@@ -840,17 +840,20 @@ def show_classification_page():
                 st.switch_page("pages/03_🚀_Entrenar_Modelo.py")
         
         with col2:
-            # Opción para usar modelo preentrenado
-            if st.button("📦 Usar Modelo Preentrenado"):
-                predictor.load_pretrained_model()
-                st.success("✅ Modelo preentrenado cargado")
-                st.rerun()
+            st.info("Después de entrenar, vuelve aquí para clasificar")
         
         return
     
-    # Cargar modelo
-    with st.spinner("Cargando modelo..."):
-        predictor.load_model()
+    # Cargar modelo automáticamente
+    if predictor.model is None:
+        with st.spinner("Cargando modelo..."):
+            try:
+                predictor.load_model()
+            except Exception as e:
+                st.error(f"Error al cargar modelo: {e}")
+                if st.button("🔄 Intentar cargar modelo manualmente"):
+                    predictor.load_pretrained_model()
+                return
     
     # Seleccionar método de entrada
     st.markdown("### 📥 Seleccionar Método de Entrada")

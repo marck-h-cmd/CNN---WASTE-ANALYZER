@@ -30,27 +30,50 @@ class ModelPredictor:
     
     def model_exists(self) -> bool:
         """Verifica si existe un modelo entrenado"""
-        # Buscar el mejor modelo
+        # Buscar el mejor modelo en models/trained/
         best_model = self.models_dir / 'best.pt'
         if best_model.exists():
             return True
         
-        # Buscar cualquier modelo .pt
+        # Buscar cualquier modelo .pt en models/trained/
         model_files = list(self.models_dir.glob('*.pt'))
         if model_files:
             return True
+        
+        # Buscar en runs/
+        runs_dir = Path('runs')
+        runs_models = [
+            runs_dir / 'train' / 'weights' / 'best.pt',
+            runs_dir / 'classify' / 'train' / 'weights' / 'best.pt',
+            runs_dir / 'classify' / 'models' / 'trained' / 'garbage_classification_nano' / 'weights' / 'best.pt'
+        ]
+        
+        for model_path in runs_models:
+            if model_path.exists():
+                return True
         
         return False
     
     def load_model(self, model_path: str = None):
         """Carga el modelo entrenado"""
         if model_path is None:
-            # Buscar el mejor modelo
-            best_model = self.models_dir / 'best.pt'
-            if best_model.exists():
-                model_path = str(best_model)
-            else:
-                # Buscar cualquier modelo .pt
+            # Buscar el mejor modelo primero en runs/
+            runs_dir = Path('runs')
+            possible_paths = [
+                runs_dir / 'train' / 'weights' / 'best.pt',
+                runs_dir / 'classify' / 'train' / 'weights' / 'best.pt',
+                runs_dir / 'classify' / 'models' / 'trained' / 'garbage_classification_nano' / 'weights' / 'best.pt',
+                self.models_dir / 'best.pt'
+            ]
+            
+            # Buscar el primer modelo que exista
+            for path in possible_paths:
+                if path.exists():
+                    model_path = str(path)
+                    break
+            
+            # Si no encontró en runs ni en models, buscar cualquier .pt
+            if model_path is None:
                 model_files = list(self.models_dir.glob('*.pt'))
                 if model_files:
                     model_path = str(model_files[0])
@@ -58,7 +81,7 @@ class ModelPredictor:
                     raise FileNotFoundError("No se encontró ningún modelo entrenado")
         
         try:
-            st.info(f"📦 Cargando modelo: {Path(model_path).name}")
+            st.info(f"📦 Cargando modelo: {Path(model_path).name} desde {Path(model_path).parent}")
             self.model = YOLO(model_path)
             
             # Verificar que sea modelo de clasificación
@@ -73,13 +96,40 @@ class ModelPredictor:
             raise
     
     def load_pretrained_model(self):
-        """Carga un modelo preentrenado"""
-        model_name = f"{self.config['model']['name']}-cls"
+        """Carga el modelo entrenado desde runs/ o models/"""
         try:
-            self.model = YOLO(f"{model_name}.pt")
-            st.success(f"✅ Modelo preentrenado {model_name} cargado")
+            # Buscar el modelo best.pt en la carpeta runs/ primero
+            runs_dir = Path('runs')
+            possible_paths = [
+                runs_dir / 'train' / 'weights' / 'best.pt',
+                runs_dir / 'classify' / 'train' / 'weights' / 'best.pt',
+                runs_dir / 'classify' / 'models' / 'trained' / 'garbage_classification_nano' / 'weights' / 'best.pt',
+                self.models_dir / 'best.pt'
+            ]
+            
+            model_path = None
+            for path in possible_paths:
+                if path.exists():
+                    model_path = path
+                    break
+            
+            if model_path is None:
+                st.error("❌ No se encontró modelo entrenado en runs/ ni en models/")
+                st.info("💡 Primero entrena un modelo en la página '🚀 Entrenar Modelo'")
+                return
+            
+            st.info(f"📦 Cargando modelo desde: {model_path}")
+            self.model = YOLO(str(model_path))
+            
+            # Verificar que sea modelo de clasificación
+            if not hasattr(self.model.model, 'names'):
+                self.model.model.names = {i: name for i, name in enumerate(self.classes)}
+            
+            st.success(f"✅ Modelo cargado exitosamente desde: {model_path.parent.parent.parent.name if 'runs' in str(model_path) else model_path.parent.name}")
+            
         except Exception as e:
-            st.error(f"❌ Error cargando modelo preentrenado: {str(e)}")
+            st.error(f"❌ Error cargando modelo: {str(e)}")
+            raise
     
     def predict(self, image_source: Union[str, bytes, Image.Image]) -> Tuple[List[Dict], float, np.ndarray]:
         """Realiza predicción en una imagen"""
