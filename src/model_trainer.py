@@ -244,14 +244,25 @@ class ModelTrainer:
         if self.model is None:
             raise ValueError("Modelo no cargado")
         
-        # Evaluar en conjunto de validación
-        metrics = self.model.val()
+        # Evaluar en conjunto de validación (sin guardar archivos adicionales)
+        metrics = self.model.val(
+            save=False,
+            save_json=False,
+            save_txt=False,
+            plots=False
+        )
         
         # Obtener predicciones para métricas adicionales
         val_results = self.model.predict(
             source=str(Path(self.config['paths']['data_processed']) / 'val'),
             save=False,
-            verbose=False
+            save_txt=False,
+            save_conf=False,
+            save_crop=False,
+            verbose=False,
+            project=None,  # No crear carpeta project
+            name=None,     # No crear subcarpeta name
+            exist_ok=True
         )
         
         # Extraer labels verdaderas y predicciones
