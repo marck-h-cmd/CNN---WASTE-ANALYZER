@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 from sklearn.metrics import roc_curve, auc, precision_recall_curve
 import streamlit as st
 
@@ -17,25 +18,55 @@ class MetricsAnalyzer:
         self.classes = config['classes']
         
         # Directorios
-        self.results_dir = Path(config['paths']['results_dir'])
+        base_results = Path(config['paths']['results_dir'])
+        # El trainer guarda en results/training_logs/, así que ajustamos
+        self.results_dir = base_results / 'training_logs'
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+        
         self.models_dir = Path(config['paths']['trained_models'])
     
     def load_current_model_metrics(self) -> Optional[Dict]:
         """Carga métricas del modelo actual"""
-        # Buscar el mejor modelo
-        best_model = self.models_dir / 'best.pt'
-        if not best_model.exists():
-            return None
+        # Buscar en results/training_logs primero (donde guarda el trainer mejorado)
+        if self.results_dir.exists():
+            experiment_dirs = [d for d in self.results_dir.iterdir() if d.is_dir()]
+            
+            # Buscar archivos de métricas en subdirectorios de experimentos
+            metrics_files = []
+            for exp_dir in experiment_dirs:
+                metrics_files.extend(list(exp_dir.glob('metrics_*.json')))
+                metrics_files.extend(list(exp_dir.glob('*metrics.json')))
+            
+            if metrics_files:
+                # Obtener el archivo más reciente
+                latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
+                with open(latest_file, 'r') as f:
+                    return json.load(f)
         
-        # Buscar archivo de métricas correspondiente
-        model_name = best_model.stem
-        metrics_files = list(self.results_dir.rglob(f"*{model_name}*metrics*.json"))
+        # Buscar en runs/ como fallback
+        runs_models = [
+            Path('runs/classify/models/trained'),
+            Path('runs/train'),
+            Path('runs/classify/train')
+        ]
         
-        if metrics_files:
-            # Cargar el más reciente
-            latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
-            with open(latest_file, 'r') as f:
-                return json.load(f)
+        # Buscar el directorio del modelo más reciente
+        experiment_dirs = []
+        for base_dir in runs_models:
+            if base_dir.exists():
+                experiment_dirs.extend([d for d in base_dir.iterdir() if d.is_dir()])
+        
+        if experiment_dirs:
+            # Buscar archivos de métricas
+            metrics_files = []
+            for exp_dir in experiment_dirs:
+                metrics_files.extend(list(exp_dir.rglob('metrics_*.json')))
+                metrics_files.extend(list(exp_dir.rglob('*metrics.json')))
+            
+            if metrics_files:
+                latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
+                with open(latest_file, 'r') as f:
+                    return json.load(f)
         
         return None
     
@@ -71,7 +102,13 @@ class MetricsAnalyzer:
     
     def _load_model_metrics_by_name(self, model_name: str) -> Optional[Dict]:
         """Carga métricas por nombre de modelo"""
+        # Buscar en results/training_logs
         metrics_files = list(self.results_dir.rglob(f"*{model_name}*metrics*.json"))
+        
+        # Buscar también en el directorio del experimento específico
+        experiment_dir = self.results_dir / model_name
+        if experiment_dir.exists():
+            metrics_files.extend(list(experiment_dir.glob('metrics_*.json')))
         
         if metrics_files:
             latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
@@ -163,24 +200,51 @@ class MetricsAnalyzer:
         # Convertir a numpy array si es lista
         cm_array = np.array(cm)
         
+        # Normalizar por filas (por clase real) para obtener porcentajes
+        if cm_array.sum() > len(self.classes):  # Si son valores absolutos, no porcentajes
+            cm_normalized = cm_array.astype('float') / (cm_array.sum(axis=1)[:, np.newaxis] + 1e-10)
+        else:
+            cm_normalized = cm_array
+        
+        cm_normalized = np.nan_to_num(cm_normalized)
+        
         # Formatear nombres de clases para mostrar
         class_display = [c.replace('-', ' ').title() for c in self.classes]
         
-        fig = px.imshow(
-            cm_array,
-            labels=dict(x="Predicción", y="Real", color="Porcentaje"),
+        # Crear heatmap con anotaciones personalizadas
+        fig = go.Figure(data=go.Heatmap(
+            z=cm_normalized,
             x=class_display,
             y=class_display,
-            color_continuous_scale='Greens',
-            aspect='auto',
-            text_auto='.1%'
-        )
+            colorscale='Greens',
+            hovertemplate='Real: %{y}<br>Predicha: %{x}<br>Porcentaje: %{z:.1%}<extra></extra>',
+            colorbar=dict(title="Porcentaje")
+        ))
+        
+        # Añadir anotaciones de texto con porcentajes
+        for i in range(len(cm_normalized)):
+            for j in range(len(cm_normalized[0])):
+                fig.add_annotation(
+                    text=f"{cm_normalized[i, j]:.1%}",
+                    x=class_display[j],
+                    y=class_display[i],
+                    xref='x',
+                    yref='y',
+                    showarrow=False,
+                    font=dict(
+                        color='white' if cm_normalized[i, j] > 0.5 else 'black',
+                        size=9
+                    )
+                )
         
         fig.update_layout(
-            title='Matriz de Confusión',
+            title='Matriz de Confusión Normalizada',
             xaxis_title='Clase Predicha',
             yaxis_title='Clase Real',
-            coloraxis_colorbar=dict(title="Porcentaje")
+            xaxis=dict(side='bottom', tickangle=-45),
+            yaxis=dict(autorange='reversed'),
+            width=900,
+            height=800
         )
         
         return fig
@@ -219,22 +283,30 @@ class MetricsAnalyzer:
         
         return pd.DataFrame(data)
     
-    def get_common_errors(self) -> List[Dict]:
-        """Obtiene errores más comunes de clasificación"""
-        # En implementación real, analizaría la matriz de confusión
-        # Por ahora, datos de ejemplo
+    def get_common_errors(self, metrics: Dict = None) -> List[Dict]:
+        """Obtiene errores más comunes de clasificación desde la matriz de confusión"""
+        if metrics is None:
+            metrics = self.load_current_model_metrics()
         
+        if not metrics or 'confusion_matrix' not in metrics:
+            return []
+        
+        cm = np.array(metrics['confusion_matrix'])
         errors = []
-        num_classes = min(5, len(self.classes))  # Mostrar solo 5 clases
         
-        for i in range(num_classes):
-            for j in range(num_classes):
-                if i != j:
+        # Analizar matriz de confusión para encontrar confusiones frecuentes
+        for i in range(len(cm)):
+            for j in range(len(cm[0])):
+                if i != j and cm[i, j] > 0:  # Solo errores (fuera de diagonal)
+                    # Calcular porcentaje respecto al total de la clase real
+                    total_class = cm[i].sum()
+                    percentage = (cm[i, j] / total_class * 100) if total_class > 0 else 0
+                    
                     errors.append({
-                        'actual': self.classes[i],
-                        'predicted': self.classes[j],
-                        'count': int(np.random.uniform(5, 50)),
-                        'percentage': np.random.uniform(1, 10)
+                        'actual': self.classes[i].replace('-', ' ').title(),
+                        'predicted': self.classes[j].replace('-', ' ').title(),
+                        'count': int(cm[i, j]),
+                        'percentage': float(percentage)
                     })
         
         # Ordenar por frecuencia
@@ -282,13 +354,16 @@ class MetricsAnalyzer:
         
         models = comparison_df.columns[1:3].tolist()  # Obtener nombres de modelos
         
-        for model in models:
+        colors = ['#2E8B57', '#3CB371']
+        
+        for idx, model in enumerate(models):
             fig.add_trace(go.Bar(
                 name=model,
                 x=comparison_df['Métrica'],
                 y=comparison_df[model],
                 text=comparison_df[model].apply(lambda x: f'{x:.3f}'),
-                textposition='auto'
+                textposition='auto',
+                marker_color=colors[idx]
             ))
         
         fig.update_layout(
@@ -296,7 +371,157 @@ class MetricsAnalyzer:
             xaxis_title='Métrica',
             yaxis_title='Valor',
             barmode='group',
+            hovermode='x unified',
+            showlegend=True
+        )
+        
+        return fig
+    
+    def load_training_history(self, experiment_name: str = None) -> Optional[pd.DataFrame]:
+        """Carga historial de entrenamiento desde results.csv de YOLO"""
+        # Buscar archivo results.csv en múltiples ubicaciones
+        search_paths = [
+            Path('runs/classify/models/trained'),
+            Path('runs/classify/train'),
+            Path('runs/train'),
+            Path('models/trained')
+        ]
+        
+        results_files = []
+        
+        if experiment_name:
+            # Buscar en directorio específico del experimento
+            for base_path in search_paths:
+                exp_path = base_path / experiment_name
+                if exp_path.exists():
+                    csv_file = exp_path / 'results.csv'
+                    if csv_file.exists():
+                        results_files.append(csv_file)
+        else:
+            # Buscar en todas las ubicaciones
+            for base_path in search_paths:
+                if base_path.exists():
+                    results_files.extend(list(base_path.rglob('results.csv')))
+        
+        if not results_files:
+            return None
+        
+        # Usar el archivo más reciente
+        latest_file = max(results_files, key=lambda x: x.stat().st_mtime)
+        
+        try:
+            df = pd.read_csv(latest_file)
+            # Limpiar nombres de columnas
+            df.columns = df.columns.str.strip()
+            return df
+        except Exception as e:
+            print(f"Error cargando historial: {e}")
+            return None
+    
+    def plot_training_history(self, experiment_name: str = None) -> go.Figure:
+        """Crea gráfico del historial de entrenamiento"""
+        df = self.load_training_history(experiment_name)
+        
+        if df is None or df.empty:
+            fig = go.Figure()
+            fig.add_annotation(text="No hay datos de entrenamiento disponibles",
+                             showarrow=False,
+                             xref="paper", yref="paper",
+                             x=0.5, y=0.5, font=dict(size=14))
+            return fig
+        
+        # Crear subplots para diferentes métricas
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('Loss de Entrenamiento y Validación', 
+                          'Accuracy Top-1',
+                          'Accuracy Top-5',
+                          'Learning Rate'),
+            vertical_spacing=0.12,
+            horizontal_spacing=0.1
+        )
+        
+        # Plot 1: Training and Validation Loss
+        if 'train/loss' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['epoch'], y=df['train/loss'],
+                          name='Train Loss', mode='lines+markers',
+                          line=dict(color='#2E8B57', width=2)),
+                row=1, col=1
+            )
+        
+        if 'val/loss' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['epoch'], y=df['val/loss'],
+                          name='Val Loss', mode='lines+markers',
+                          line=dict(color='#FF6B6B', width=2)),
+                row=1, col=1
+            )
+        
+        # Plot 2: Top-1 Accuracy
+        if 'metrics/accuracy_top1' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['epoch'], y=df['metrics/accuracy_top1'],
+                          name='Top-1 Acc', mode='lines+markers',
+                          line=dict(color='#3CB371', width=2),
+                          fill='tozeroy', fillcolor='rgba(60, 179, 113, 0.1)'),
+                row=1, col=2
+            )
+        
+        # Plot 3: Top-5 Accuracy
+        if 'metrics/accuracy_top5' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['epoch'], y=df['metrics/accuracy_top5'],
+                          name='Top-5 Acc', mode='lines+markers',
+                          line=dict(color='#4ECDC4', width=2),
+                          fill='tozeroy', fillcolor='rgba(78, 205, 196, 0.1)'),
+                row=2, col=1
+            )
+        
+        # Plot 4: Learning Rate
+        lr_cols = [col for col in df.columns if 'lr/' in col]
+        if lr_cols:
+            # Usar solo el primer learning rate group
+            fig.add_trace(
+                go.Scatter(x=df['epoch'], y=df[lr_cols[0]],
+                          name='Learning Rate', mode='lines+markers',
+                          line=dict(color='#FF6B6B', width=2)),
+                row=2, col=2
+            )
+        
+        # Actualizar layout
+        fig.update_xaxes(title_text="Época", row=2, col=1)
+        fig.update_xaxes(title_text="Época", row=2, col=2)
+        fig.update_yaxes(title_text="Loss", row=1, col=1)
+        fig.update_yaxes(title_text="Accuracy", row=1, col=2)
+        fig.update_yaxes(title_text="Accuracy", row=2, col=1)
+        fig.update_yaxes(title_text="LR", row=2, col=2, type="log")
+        
+        fig.update_layout(
+            height=700,
+            showlegend=True,
+            title_text="Historial de Entrenamiento",
+            title_font_size=18,
             hovermode='x unified'
         )
         
         return fig
+    
+    def get_training_summary(self, experiment_name: str = None) -> Dict:
+        """Obtiene resumen del entrenamiento"""
+        df = self.load_training_history(experiment_name)
+        
+        if df is None or df.empty:
+            return {}
+        
+        summary = {
+            'total_epochs': len(df),
+            'best_epoch': int(df['metrics/accuracy_top1'].idxmax() + 1) if 'metrics/accuracy_top1' in df.columns else 0,
+            'final_train_loss': float(df['train/loss'].iloc[-1]) if 'train/loss' in df.columns else 0,
+            'final_val_loss': float(df['val/loss'].iloc[-1]) if 'val/loss' in df.columns else 0,
+            'best_val_acc': float(df['metrics/accuracy_top1'].max()) if 'metrics/accuracy_top1' in df.columns else 0,
+            'final_val_acc': float(df['metrics/accuracy_top1'].iloc[-1]) if 'metrics/accuracy_top1' in df.columns else 0,
+            'training_time': float(df['time'].iloc[-1]) if 'time' in df.columns else 0
+        }
+        
+        return summary

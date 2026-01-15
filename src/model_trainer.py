@@ -339,19 +339,63 @@ class ModelTrainer:
     
     def save_training_results(self, results: Dict):
         """Guarda resultados del entrenamiento"""
-        # Guardar en JSON
-        results_file = self.results_dir / f"{results['experiment_name']}_results.json"
+        from datetime import datetime
         
+        # Crear directorio específico para el experimento
+        experiment_dir = self.results_dir / results['experiment_name']
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Timestamp para archivos
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Agregar timestamp y información adicional
+        results['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Agregar información del dataset
+        data_dir = Path(self.config['paths']['data_processed'])
+        train_dir = data_dir / 'train'
+        val_dir = data_dir / 'val'
+        
+        results['dataset_info'] = {
+            'train_images': sum(1 for _ in train_dir.rglob('*.jpg')) + sum(1 for _ in train_dir.rglob('*.png')) if train_dir.exists() else 0,
+            'val_images': sum(1 for _ in val_dir.rglob('*.jpg')) + sum(1 for _ in val_dir.rglob('*.png')) if val_dir.exists() else 0,
+            'test_images': 0,
+            'classes': self.classes
+        }
+        
+        # Guardar resultados completos con timestamp
+        results_file = experiment_dir / f"results_{timestamp}.json"
         with open(results_file, 'w') as f:
             json.dump(results, f, indent=2)
         
-        # Guardar métricas separadas
-        metrics_file = self.results_dir / f"{results['experiment_name']}_metrics.json"
-        
+        # Guardar métricas separadas con timestamp
+        metrics_file = experiment_dir / f"metrics_{timestamp}.json"
         with open(metrics_file, 'w') as f:
             json.dump(results['metrics'], f, indent=2)
         
-        print(f"💾 Resultados guardados en: {results_file}")
+        # Guardar resumen en CSV
+        summary_file = experiment_dir / f"summary_{timestamp}.csv"
+        summary_data = {
+            'experiment_name': results['experiment_name'],
+            'timestamp': results['timestamp'],
+            'training_time_min': results['training_time'],
+            'epochs': results['epochs'],
+            'batch_size': results['batch_size'],
+            'learning_rate': results['learning_rate'],
+            'device': results['device'],
+            'accuracy': results['metrics'].get('accuracy', 0),
+            'precision': results['metrics'].get('precision', 0),
+            'recall': results['metrics'].get('recall', 0),
+            'f1_score': results['metrics'].get('f1_score', 0),
+            'model_path': results['model_path']
+        }
+        
+        pd.DataFrame([summary_data]).to_csv(summary_file, index=False)
+        
+        print(f"💾 Resultados guardados en: {experiment_dir}")
+        print(f"   - Resultados: {results_file.name}")
+        print(f"   - Métricas: {metrics_file.name}")
+        print(f"   - Resumen: {summary_file.name}")
     
     def load_model_metrics(self, model_path: Path) -> Optional[Dict]:
         """Carga métricas de un modelo entrenado"""
