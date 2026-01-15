@@ -232,12 +232,33 @@ class ModelPredictor:
             # Guardar copia original para visualización
             original_image = image.copy()
             
-            # Realizar predicción
-            results = self.model(
-                image, 
+            # Deshabilitar completamente el guardado de YOLO
+            # Esto evita que se creen carpetas runs/classify/predict
+            import tempfile
+            temp_dir = tempfile.mkdtemp()
+            
+            # Realizar predicción (sin guardar archivos en disco ni crear carpetas)
+            results = self.model.predict(
+                source=image,
                 verbose=False,
-                imgsz=self.config['model']['input_size']
+                save=False,
+                save_txt=False,
+                save_conf=False,
+                save_crop=False,
+                show=False,
+                stream=False,
+                imgsz=self.config['model']['input_size'],
+                project=temp_dir,  # Usar directorio temporal
+                name='temp',
+                exist_ok=True
             )
+            
+            # Limpiar directorio temporal
+            try:
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except:
+                pass
             
             processing_time = (time.time() - start_time) * 1000  # en milisegundos
             
