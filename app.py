@@ -914,16 +914,56 @@ def show_classification_page():
         
         return
     
-    # Cargar modelo automáticamente
-    if predictor.model is None:
-        with st.spinner("Cargando modelo..."):
+    # Obtener modelos disponibles
+    available_models = predictor.get_available_models()
+    
+    if not available_models:
+        st.error("❌ No se encontraron modelos entrenados")
+        return
+    
+    # Selector de modelo en la parte superior
+    st.markdown("### 🎯 Selección de Modelo")
+    
+    col_model, col_info, col_stats = st.columns([2, 1, 1])
+    
+    with col_model:
+        # Crear opciones para el selectbox
+        model_options = {model['name']: model for model in available_models}
+        
+        selected_model_name = st.selectbox(
+            "Selecciona el modelo a usar:",
+            options=list(model_options.keys()),
+            help="Selecciona uno de los modelos entrenados disponibles"
+        )
+        
+        selected_model = model_options[selected_model_name]
+    
+    with col_info:
+        # Mostrar información del modelo seleccionado
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.markdown(f"**📁 Ubicación:** {selected_model['location']}")
+        st.markdown(f"**🔬 Experimento:** {selected_model['experiment']}")
+        st.markdown(f"**⚖️ Tipo:** {selected_model['weight_type']}")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col_stats:
+        # Mostrar estadísticas del archivo
+        model_path = Path(selected_model['path'])
+        if model_path.exists():
+            file_size = model_path.stat().st_size / (1024 * 1024)
+            st.metric("📦 Tamaño", f"{file_size:.2f} MB")
+            st.metric("🗂️ Modelos", len(available_models))
+    
+    # Cargar el modelo seleccionado
+    if predictor.current_model_path != selected_model['path']:
+        with st.spinner("Cargando modelo seleccionado..."):
             try:
-                predictor.load_model()
+                predictor.load_model(selected_model['path'])
             except Exception as e:
                 st.error(f"Error al cargar modelo: {e}")
-                if st.button("🔄 Intentar cargar modelo manualmente"):
-                    predictor.load_pretrained_model()
                 return
+    
+    st.markdown("---")
     
     # Seleccionar método de entrada
     st.markdown("### 📥 Seleccionar Método de Entrada")

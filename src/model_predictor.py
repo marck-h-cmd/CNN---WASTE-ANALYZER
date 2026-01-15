@@ -17,6 +17,7 @@ class ModelPredictor:
     def __init__(self, config: dict):
         self.config = config
         self.model = None
+        self.current_model_path = None
         self.classes = config['classes']
         
         # Directorios
@@ -54,6 +55,63 @@ class ModelPredictor:
         
         return False
     
+    def get_available_models(self) -> List[Dict[str, str]]:
+        """Obtiene lista de todos los modelos disponibles"""
+        models = []
+        
+        # Buscar en runs/classify/models/trained/
+        runs_trained_dir = Path('runs/classify/models/trained')
+        if runs_trained_dir.exists():
+            for experiment_dir in runs_trained_dir.iterdir():
+                if experiment_dir.is_dir():
+                    weights_dir = experiment_dir / 'weights'
+                    if weights_dir.exists():
+                        for weight_file in weights_dir.glob('*.pt'):
+                            models.append({
+                                'name': f"{experiment_dir.name} ({weight_file.name})",
+                                'path': str(weight_file),
+                                'experiment': experiment_dir.name,
+                                'weight_type': weight_file.stem,
+                                'location': 'runs/classify'
+                            })
+        
+        # Buscar en runs/train/weights/
+        runs_train_weights = Path('runs/train/weights')
+        if runs_train_weights.exists():
+            for weight_file in runs_train_weights.glob('*.pt'):
+                models.append({
+                    'name': f"train ({weight_file.name})",
+                    'path': str(weight_file),
+                    'experiment': 'train',
+                    'weight_type': weight_file.stem,
+                    'location': 'runs/train'
+                })
+        
+        # Buscar en runs/classify/train/weights/
+        runs_classify_train = Path('runs/classify/train/weights')
+        if runs_classify_train.exists():
+            for weight_file in runs_classify_train.glob('*.pt'):
+                models.append({
+                    'name': f"classify/train ({weight_file.name})",
+                    'path': str(weight_file),
+                    'experiment': 'classify/train',
+                    'weight_type': weight_file.stem,
+                    'location': 'runs/classify/train'
+                })
+        
+        # Buscar en models/trained/
+        if self.models_dir.exists():
+            for weight_file in self.models_dir.glob('*.pt'):
+                models.append({
+                    'name': f"models/trained ({weight_file.name})",
+                    'path': str(weight_file),
+                    'experiment': 'trained',
+                    'weight_type': weight_file.stem,
+                    'location': 'models/trained'
+                })
+        
+        return models
+    
     def load_model(self, model_path: str = None):
         """Carga el modelo entrenado"""
         if model_path is None:
@@ -83,6 +141,7 @@ class ModelPredictor:
         try:
             st.info(f"📦 Cargando modelo: {Path(model_path).name} desde {Path(model_path).parent}")
             self.model = YOLO(model_path)
+            self.current_model_path = model_path
             
             # Verificar que sea modelo de clasificación
             if not hasattr(self.model.model, 'names'):
