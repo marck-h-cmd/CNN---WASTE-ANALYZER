@@ -4,15 +4,12 @@ import os
 import sys
 from pathlib import Path
 import yaml
+import pandas as pd
 #go2
 # Añadir directorio src al path
 sys.path.append(str(Path(__file__).parent / "src"))
 
 
-# FORZAR CPU Y LIMPIAR CUDA
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-os.environ["YOLO_DISABLE_SIGNAL_HANDLERS"] = "1"
-os.environ["YOLO_VERBOSE"] = "False"
 
 # Mapeo UI (Español) -> Dataset
 CLASS_LABELS = {
@@ -684,25 +681,55 @@ def show_training_page():
         - **Tiempo estimado**: 30-60 minutos (depende de épocas y hardware)
         """)
         
-        # Verificar recursos
-        col_res1, col_res2 = st.columns(2)
+        # Verificar recursos CON MÁS DETALLE
+        col_res1, col_res2, col_res3 = st.columns(3)
         
         with col_res1:
             import torch
             has_gpu = torch.cuda.is_available()
+            # ✅ LÍNEAS CORREGIDAS:
             if has_gpu:
-                gpu_name = torch.cuda.get_device_name(0)
-                st.success(f"✅ GPU disponible: {gpu_name}")
-            else:
-                st.warning("⚠️ GPU no detectada. El entrenamiento será lento.")
+                try:
+                    gpu_name = torch.cuda.get_device_name(0)
+                    gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                except Exception as e:
+                    gpu_name = "Error detectando GPU"
+                    gpu_memory = 0
+                    has_gpu = False
         
         with col_res2:
             import psutil
             ram_gb = psutil.virtual_memory().total / (1024**3)
-            if ram_gb >= 8:
-                st.success(f"✅ RAM suficiente: {ram_gb:.1f} GB")
+            if ram_gb >= 16:
+                st.success(f"✅ RAM: {ram_gb:.1f} GB")
+            elif ram_gb >= 8:
+                st.warning(f"⚠️ RAM: {ram_gb:.1f} GB")
             else:
-                st.warning(f"⚠️ RAM limitada: {ram_gb:.1f} GB")
+                st.error(f"❌ RAM: {ram_gb:.1f} GB")
+        
+        with col_res3:
+            # Mostrar dispositivo seleccionado
+            device_display = device
+            if device == "auto (detectar)":
+                if has_gpu:
+                    device_display = "GPU (detectada)"
+                else:
+                    device_display = "CPU (no hay GPU)"
+            
+            st.info(f"🎯 Dispositivo: {device_display}")
+        
+        # Botón para probar GPU
+        if st.button("🧪 Probar GPU", type="secondary"):
+            import torch
+            if torch.cuda.is_available():
+                # Operación de prueba
+                x = torch.randn(1000, 1000).cuda()
+                y = torch.randn(1000, 1000).cuda()
+                z = torch.matmul(x, y)
+                st.success(f"✅ GPU funciona correctamente")
+                st.write(f"Operación completada: {z.shape} en GPU")
+            else:
+                st.error("❌ GPU no disponible")
         
         # Botón para iniciar entrenamiento
         if st.button("🎬 Iniciar Entrenamiento", type="primary", use_container_width=True):
@@ -711,6 +738,7 @@ def show_training_page():
             training_logs = st.empty()
             progress_bar = st.progress(0)
             status_text = st.empty()
+            metrics_container = st.empty()
             
             # Callback para actualizar UI durante entrenamiento
             def training_callback(epoch, total_epochs, metrics):
@@ -724,40 +752,82 @@ def show_training_page():
                 # Mostrar métricas en logs
                 with training_logs.container():
                     st.write(f"✅ Época {epoch + 1} completada")
-                    st.write(f"   Loss: {metrics.get('loss', 0):.4f}")
-                    st.write(f"   Accuracy: {metrics.get('accuracy', 0):.4f}")
+                    st.write(f"   📉 Loss: {metrics.get('train/loss', metrics.get('loss', 0)):.4f}")
+                    st.write(f"   📈 Accuracy: {metrics.get('metrics/accuracy', 0):.4f}")
+                    if 'lr/pg0' in metrics:
+                        st.write(f"   📚 LR: {metrics['lr/pg0']:.6f}")
             
             # Iniciar entrenamiento
             with st.spinner("🚀 Iniciando entrenamiento..."):
                 try:
+                    # Convertir dispositivo correctamente
+                    device_param = device
+                    if device == "auto (detectar)":
+                        device_param = "auto"
+                    elif device == "cuda (GPU)":
+                        device_param = "cuda"
+                    
+                    # Mostrar configuración final
+                    st.info(f"**Configuración final:** Épocas={epochs}, Batch={batch_size}, Device={device_param}")
+                    
                     results = trainer.train_model(
                         epochs=epochs,
                         batch_size=batch_size,
                         learning_rate=learning_rate,
-                        device=device.replace("auto", "auto").replace("cuda (GPU)", "cuda"),
+                        device=device_param,  # Ya convertido
                         callback=training_callback
                     )
                     
                     st.success("✅ ¡Entrenamiento completado exitosamente!")
+                    st.balloons()
                     
                     # Mostrar resumen
                     st.markdown("#### 📊 Resumen del Entrenamiento")
                     
-                    col_res1, col_res2, col_res3 = st.columns(3)
+                    col_res1, col_res2, col_res3, col_res4 = st.columns(4)
                     
                     with col_res1:
                         st.metric("Épocas", results.get('epochs', epochs))
                     
                     with col_res2:
                         final_acc = results.get('metrics', {}).get('accuracy', 0)
-                        st.metric("Precisión Final", f"{final_acc:.2%}")
+                        st.metric("Precisión", f"{final_acc:.2%}")
                     
                     with col_res3:
                         training_time = results.get('training_time', 0)
-                        st.metric("Tiempo Total", f"{training_time:.1f} min")
+                        st.metric("Tiempo", f"{training_time:.1f} min")
                     
+                    with col_res4:
+                        device_used = results.get('device', 'cpu')
+                        st.metric("Dispositivo", "GPU" if device_used == 'cuda' else "CPU")
+                    
+                    # Mostrar métricas detalladas
+                    with st.expander("📈 Ver métricas detalladas"):
+                        if 'metrics' in results:
+                            metrics = results['metrics']
+                            st.write("**Métricas por clase:**")
+                            if 'class_report' in metrics:
+                                report_df = pd.DataFrame(metrics['class_report']).transpose()
+                                st.dataframe(report_df)
+                            
+                            st.write(f"**Exactitud:** {metrics.get('accuracy', 0):.4f}")
+                            st.write(f"**Precisión:** {metrics.get('precision', 0):.4f}")
+                            st.write(f"**Recall:** {metrics.get('recall', 0):.4f}")
+                            st.write(f"**F1-Score:** {metrics.get('f1_score', 0):.4f}")
+                    
+                    # Enlace al modelo entrenado
+                    model_path = results.get('model_path', '')
+                    if model_path and Path(model_path).exists():
+                        st.markdown(f"**📁 Modelo guardado en:** `{model_path}`")
+                        
                 except Exception as e:
                     st.error(f"❌ Error durante el entrenamiento: {str(e)}")
+                    st.error("""
+                    **Posibles soluciones:**
+                    1. Reduce el batch_size (16 o 8)
+                    2. Verifica que el dataset esté correctamente organizado
+                    3. Revisa los logs de error arriba
+                    """)
     
     with tab3:
         st.markdown("### 📊 Resultados del Entrenamiento")

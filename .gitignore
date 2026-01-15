@@ -22,6 +22,7 @@ wheels/
 
 # Entorno virtual
 venv/
+venv.11/
 ENV/
 env/
 .env

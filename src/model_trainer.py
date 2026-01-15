@@ -4,18 +4,19 @@ import json
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
+
+# IMPORTANTE: Configurar variables de entorno ANTES de importar numpy/torch
+os.environ['YOLO_DISABLE_SIGNAL_HANDLERS'] = '1'
+os.environ['YOLO_VERBOSE'] = 'False'
+
+# Ahora importar el resto
 import numpy as np
 import pandas as pd
 import torch
-#go
 import plotly.graph_objects as go
 import plotly.express as px
 from sklearn.metrics import classification_report, confusion_matrix
 import streamlit as st
-
-# SOLUCIÓN: Deshabilitar handlers de señal para threading
-os.environ['YOLO_DISABLE_SIGNAL_HANDLERS'] = '1'
-os.environ['YOLO_VERBOSE'] = 'False'
 from ultralytics import YOLO
 
 class ModelTrainer:
@@ -32,6 +33,94 @@ class ModelTrainer:
         
         self.results_dir = Path(config['paths']['results_dir']) / 'training_logs'
         self.results_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Verificar disponibilidad de CUDA al inicializar
+        self._check_cuda_availability()
+    
+    def _check_cuda_availability(self):
+        """Verifica y muestra información sobre CUDA"""
+        print("="*60)
+        print("🔍 VERIFICACIÓN DE CUDA Y GPU")
+        print("="*60)
+        
+        print(f"PyTorch versión: {torch.__version__}")
+        print(f"CUDA disponible: {torch.cuda.is_available()}")
+        
+        if torch.cuda.is_available():
+            print(f"CUDA versión: {torch.version.cuda}")
+            print(f"cuDNN versión: {torch.backends.cudnn.version()}")
+            print(f"Número de GPUs: {torch.cuda.device_count()}")
+            
+            for i in range(torch.cuda.device_count()):
+                try:
+                    props = torch.cuda.get_device_properties(i)
+                    print(f"\n📊 GPU {i}: {props.name}")
+                    print(f"   Memoria total: {props.total_memory / 1024**3:.2f} GB")
+                    print(f"   Compute capability: {props.major}.{props.minor}")
+                except Exception as e:
+                    print(f"   Error obteniendo propiedades: {e}")
+        else:
+            print("\n⚠️  CUDA no está disponible. Razones posibles:")
+            print("   1. PyTorch instalado sin soporte CUDA")
+            print("   2. Drivers de NVIDIA no instalados/actualizados")
+            print("   3. CUDA Toolkit no compatible")
+            print("\n💡 Solución: Reinstalar PyTorch con CUDA:")
+            print("   pip uninstall torch torchvision torchaudio")
+            print("   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
+        
+        print("="*60 + "\n")
+    
+    def _get_safe_device(self, requested_device: str) -> str:
+        """Obtiene un dispositivo seguro y válido"""
+        # Normalizar input
+        if requested_device is None:
+            requested_device = 'cpu'
+        
+        requested_device = str(requested_device).lower().strip()
+        
+        # Lista de dispositivos válidos
+        valid_devices = ['cpu']
+        
+        # Agregar CUDA solo si está disponible
+        if torch.cuda.is_available():
+            valid_devices.extend(['cuda', 'cuda:0'])
+            for i in range(torch.cuda.device_count()):
+                valid_devices.append(f'cuda:{i}')
+        
+        # Si el dispositivo solicitado no es válido, usar CPU
+        if requested_device not in valid_devices:
+            if 'cuda' in requested_device and not torch.cuda.is_available():
+                print(f"⚠️  CUDA solicitado pero no disponible. Usando CPU.")
+                return 'cpu'
+            else:
+                print(f"⚠️  Dispositivo '{requested_device}' no válido. Usando CPU.")
+                return 'cpu'
+        
+        # Verificar específicamente para CUDA
+        if 'cuda' in requested_device:
+            try:
+                # Intentar crear un tensor pequeño en CUDA para verificar
+                device_idx = 0
+                if ':' in requested_device:
+                    device_idx = int(requested_device.split(':')[1])
+                
+                if device_idx >= torch.cuda.device_count():
+                    print(f"⚠️  GPU {device_idx} no encontrada. Usando GPU 0.")
+                    return 'cuda:0'
+                
+                # Test rápido
+                test_tensor = torch.zeros(1).to(f'cuda:{device_idx}')
+                del test_tensor
+                torch.cuda.empty_cache()
+                
+                return requested_device
+                
+            except Exception as e:
+                print(f"⚠️  Error al acceder a CUDA: {e}")
+                print("   Usando CPU como alternativa.")
+                return 'cpu'
+        
+        return requested_device
     
     def train_model(self, epochs: int = None, batch_size: int = None,
                    learning_rate: float = None, device: str = None,
@@ -51,10 +140,12 @@ class ModelTrainer:
         if experiment_name is None:
             experiment_name = f"garbage_classification_{self.config['model']['name']}"
         
+        # Obtener dispositivo seguro
+        device = self._get_safe_device(device)
+        
         # Verificar datos procesados
         print("path", self.config['paths']['data_processed'])
         data_dir = Path(self.config['paths']['data_processed'])
-
         
         print(f"🚀 Iniciando entrenamiento con:")
         print(f"   Épocas: {epochs}")
@@ -64,7 +155,6 @@ class ModelTrainer:
         
         # Cargar modelo preentrenado
         model_name = "yolov8n-cls"
-        self.model = YOLO(f"{model_name}.pt")
         print(f"📦 Cargando modelo: {model_name}")
         
         try:
@@ -77,15 +167,6 @@ class ModelTrainer:
                 self.model = YOLO(str(local_model))
             else:
                 raise
-        
-        # Configurar dispositivo
-        # Blindaje total de device
-        if device not in ['cpu', 'cuda']:
-            device = 'cpu'
-        
-        if device == 'cuda' and not torch.cuda.is_available():
-            device = 'cpu'
-
         
         print(f"💻 Usando dispositivo: {device}")
         
