@@ -60,4 +60,11 @@ data/processed/*
 
 # data/raw/*
 
+# model trained
+models/trained/*
+
+results/*
+
+# runs/classify/models/trained
+runs/classify/models/trained/*
 # !data/raw/.gitkeep
