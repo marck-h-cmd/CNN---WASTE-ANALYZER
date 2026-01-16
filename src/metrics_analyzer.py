@@ -71,15 +71,67 @@ class MetricsAnalyzer:
         return None
     
     def get_available_models(self) -> List[str]:
-        """Obtiene lista de modelos disponibles"""
-        model_files = list(self.models_dir.glob('*.pt'))
-        return [m.stem for m in model_files]
+        """Obtiene lista de todos los modelos disponibles"""
+        models = []
+        
+        # Buscar en runs/classify/models/trained/
+        runs_trained_dir = Path('runs/classify/models/trained')
+        if runs_trained_dir.exists():
+            for experiment_dir in runs_trained_dir.iterdir():
+                if experiment_dir.is_dir():
+                    weights_dir = experiment_dir / 'weights'
+                    if weights_dir.exists():
+                        for weight_file in weights_dir.glob('*.pt'):
+                            models.append({
+                                'name': f"{experiment_dir.name} ({weight_file.name})",
+                                'path': str(weight_file),
+                                'experiment': experiment_dir.name,
+                                'weight_type': weight_file.stem,
+                                'location': 'runs/classify'
+                            })
+        
+        # Buscar en runs/train/weights/
+        runs_train_weights = Path('runs/train/weights')
+        if runs_train_weights.exists():
+            for weight_file in runs_train_weights.glob('*.pt'):
+                models.append({
+                    'name': f"train ({weight_file.name})",
+                    'path': str(weight_file),
+                    'experiment': 'train',
+                    'weight_type': weight_file.stem,
+                    'location': 'runs/train'
+                })
+        
+        # Buscar en runs/classify/train/weights/
+        runs_classify_train = Path('runs/classify/train/weights')
+        if runs_classify_train.exists():
+            for weight_file in runs_classify_train.glob('*.pt'):
+                models.append({
+                    'name': f"classify/train ({weight_file.name})",
+                    'path': str(weight_file),
+                    'experiment': 'classify/train',
+                    'weight_type': weight_file.stem,
+                    'location': 'runs/classify/train'
+                })
+        
+        # Buscar en models/trained/
+        if self.models_dir.exists():
+            for weight_file in self.models_dir.glob('*.pt'):
+                models.append({
+                    'name': f"models/trained ({weight_file.name})",
+                    'path': str(weight_file),
+                    'experiment': 'trained',
+                    'weight_type': weight_file.stem,
+                    'location': 'models/trained'
+                })
+        
+        return models
     
-    def compare_models(self, model_a: str, model_b: str) -> Optional[pd.DataFrame]:
+    def compare_models(self, model_a: Dict, model_b: Dict) -> Optional[pd.DataFrame]:
         """Compara métricas de dos modelos"""
         # Cargar métricas de ambos modelos
-        metrics_a = self._load_model_metrics_by_name(model_a)
-        metrics_b = self._load_model_metrics_by_name(model_b)
+        metrics_a = self._load_model_metrics_by_dict(model_a)
+        metrics_b = self._load_model_metrics_by_dict(model_b)
         
         if not metrics_a or not metrics_b:
             return None
@@ -93,27 +145,39 @@ class MetricsAnalyzer:
         for metric in main_metrics:
             comparison_data.append({
                 'Métrica': metric.replace('_', ' ').title(),
-                model_a: metrics_a.get(metric, 0),
-                model_b: metrics_b.get(metric, 0),
+                model_a['name']: metrics_a.get(metric, 0),
+                model_b['name']: metrics_b.get(metric, 0),
                 'Diferencia': metrics_a.get(metric, 0) - metrics_b.get(metric, 0)
             })
         
         return pd.DataFrame(comparison_data)
     
-    def _load_model_metrics_by_name(self, model_name: str) -> Optional[Dict]:
-        """Carga métricas por nombre de modelo"""
-        # Buscar en results/training_logs
-        metrics_files = list(self.results_dir.rglob(f"*{model_name}*metrics*.json"))
+    def _load_model_metrics_by_dict(self, model_dict: Dict) -> Optional[Dict]:
+        """Carga métricas por diccionario de modelo"""
+        # Buscar métricas basadas en la información del modelo
+        experiment_name = model_dict.get('experiment', '')
         
-        # Buscar también en el directorio del experimento específico
-        experiment_dir = self.results_dir / model_name
-        if experiment_dir.exists():
-            metrics_files.extend(list(experiment_dir.glob('metrics_*.json')))
+        # Buscar en results/training_logs con el nombre del experimento
+        if experiment_name:
+            experiment_dir = self.results_dir / experiment_name
+            if experiment_dir.exists():
+                metrics_files = list(experiment_dir.glob('metrics_*.json'))
+                if metrics_files:
+                    latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
+                    with open(latest_file, 'r') as f:
+                        return json.load(f)
         
-        if metrics_files:
-            latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
-            with open(latest_file, 'r') as f:
-                return json.load(f)
+        # Buscar en el directorio del modelo si existe
+        model_path = Path(model_dict.get('path', ''))
+        if model_path.exists():
+            # Buscar archivos de métricas en el directorio padre
+            parent_dir = model_path.parent.parent
+            if parent_dir.exists():
+                metrics_files = list(parent_dir.glob('metrics_*.json'))
+                if metrics_files:
+                    latest_file = max(metrics_files, key=lambda x: x.stat().st_mtime)
+                    with open(latest_file, 'r') as f:
+                        return json.load(f)
         
         return None
     
@@ -349,21 +413,25 @@ class MetricsAnalyzer:
         if comparison_df.empty:
             return go.Figure()
         
+        # Obtener nombres de modelos desde las columnas (excluyendo 'Métrica' y 'Diferencia')
+        model_columns = [col for col in comparison_df.columns if col not in ['Métrica', 'Diferencia']]
+        
+        if len(model_columns) < 2:
+            return go.Figure()
+        
         # Preparar datos para gráfico de barras agrupadas
         fig = go.Figure()
         
-        models = comparison_df.columns[1:3].tolist()  # Obtener nombres de modelos
-        
         colors = ['#2E8B57', '#3CB371']
         
-        for idx, model in enumerate(models):
+        for idx, model_col in enumerate(model_columns):
             fig.add_trace(go.Bar(
-                name=model,
+                name=model_col,
                 x=comparison_df['Métrica'],
-                y=comparison_df[model],
-                text=comparison_df[model].apply(lambda x: f'{x:.3f}'),
+                y=comparison_df[model_col],
+                text=comparison_df[model_col].apply(lambda x: f'{x:.3f}'),
                 textposition='auto',
-                marker_color=colors[idx]
+                marker_color=colors[idx % len(colors)]
             ))
         
         fig.update_layout(

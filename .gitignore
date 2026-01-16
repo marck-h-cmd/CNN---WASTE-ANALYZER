@@ -68,3 +68,5 @@ results/*
 # runs/classify/models/trained
 runs/classify/models/trained/*
 # !data/raw/.gitkeep
+
+runs/classify/*
