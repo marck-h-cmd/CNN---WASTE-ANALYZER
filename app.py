@@ -240,7 +240,7 @@ def show_home_page():
         🎯 **Clasificar residuos** - Sube fotos o usa tu cámara  
         📊 **Analizar resultados** - Revisa métricas y estadísticas  
         🚀 **Entrenar modelos** - Mejora la precisión con tus datos  
-        📈 **Generar reportes** - Obtén insights detallados  
+     
         
         ### 🚀 Empieza en 3 pasos simples
         
@@ -1529,11 +1529,12 @@ def show_analysis_page():
     analyzer = MetricsAnalyzer(config)
     
     # Tabs para diferentes tipos de análisis
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Métricas del Modelo",
-        "📈 Análisis Comparativo", 
-        "📊 Resultados del Entrenamiento",
-        "📋 Reportes"
+    tab1, tab2, tab3, tab4, tab5= st.tabs([
+        "📊 Métricas del Modelo", 
+        "📈 Historial de Entrenamiento",
+        "🔄 Análisis Comparativo", 
+        "📊 Resultados", 
+        "🔍 Diagnóstico de Errores"
     ])
     
     with tab1:
@@ -1558,6 +1559,15 @@ def show_analysis_page():
             with col4:
                 st.metric("F1-Score", f"{metrics.get('f1_score', 0):.2%}")
             
+            # Métricas adicionales
+            col5, col6 = st.columns(2)
+            with col5:
+                st.metric("Top-1 Accuracy", f"{metrics.get('top1_accuracy', 0):.2%}")
+            with col6:
+                st.metric("Top-5 Accuracy", f"{metrics.get('top5_accuracy', 0):.2%}")
+            
+            st.markdown("---")
+            
             # Gráficos
             st.markdown("#### 📈 Curvas de Rendimiento")
             
@@ -1581,36 +1591,114 @@ def show_analysis_page():
             # Métricas por clase
             st.markdown("#### 📋 Métricas por Clase")
             class_metrics_df = analyzer.get_class_metrics_dataframe(metrics)
-            st.dataframe(class_metrics_df, width='stretch')
+            st.dataframe(
+                class_metrics_df.style.highlight_max(
+                    subset=['Precisión', 'Recall', 'F1-Score'], 
+                    color='lightgreen'
+                ),
+                use_container_width=True
+            )
             
         else:
-            st.info("No hay métricas disponibles. Primero entrena un modelo.")
+            st.info("ℹ️ No hay métricas disponibles. Primero entrena un modelo.")
+            st.markdown("""
+            ### 🚀 Para comenzar:
+            1. Ve a la página **Entrenar Modelo**
+            2. Configura los parámetros de entrenamiento
+            3. Inicia el entrenamiento
+            4. Regresa aquí para ver las métricas
+            """)
     
     with tab2:
+        st.markdown("### 📈 Historial de Entrenamiento")
+        
+        # Selector de experimento
+        experiment_dirs = []
+        base_dirs = [
+            Path('runs/classify/models/trained'),
+            Path('models/trained')
+        ]
+        
+        for base_dir in base_dirs:
+            if base_dir.exists():
+                experiment_dirs.extend([d.name for d in base_dir.iterdir() if d.is_dir()])
+        
+        if experiment_dirs:
+            selected_experiment = st.selectbox(
+                "Seleccionar Experimento:",
+                ['Más reciente'] + list(set(experiment_dirs))
+            )
+            
+            exp_name = None if selected_experiment == 'Más reciente' else selected_experiment
+            
+            # Cargar y mostrar historial
+            history_df = analyzer.load_training_history(exp_name)
+            
+            if history_df is not None:
+                # Resumen del entrenamiento
+                summary = analyzer.get_training_summary(exp_name)
+                
+                if summary:
+                    st.markdown("#### 📊 Resumen del Entrenamiento")
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Total de Épocas", summary.get('total_epochs', 0))
+                    with col2:
+                        st.metric("Mejor Época", summary.get('best_epoch', 0))
+                    with col3:
+                        st.metric("Mejor Val Acc", f"{summary.get('best_val_acc', 0):.2%}")
+                    with col4:
+                        hours = summary.get('training_time', 0) / 3600
+                        st.metric("Tiempo Total", f"{hours:.1f}h")
+                
+                st.markdown("---")
+                
+                # Gráfico de historial
+                st.markdown("#### 📉 Curvas de Entrenamiento")
+                fig = analyzer.plot_training_history(exp_name)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Tabla de datos
+                with st.expander("📋 Ver Datos Completos"):
+                    st.dataframe(history_df, use_container_width=True)
+            else:
+                st.info("No se encontró historial de entrenamiento para este experimento.")
+        else:
+            st.info("No hay experimentos de entrenamiento disponibles.")
+    
+    with tab3:
         st.markdown("### 📈 Análisis Comparativo de Modelos")
         
         # Comparar diferentes modelos
         available_models = analyzer.get_available_models()
         
         if len(available_models) >= 2:
+            # Crear lista de nombres para mostrar
+            model_names = [model['name'] for model in available_models]
+            
             # Seleccionar modelos para comparar
             col1, col2 = st.columns(2)
             
             with col1:
-                model_a = st.selectbox(
+                model_a_name = st.selectbox(
                     "Modelo A:",
-                    available_models,
+                    model_names,
                     index=0
                 )
             
             with col2:
-                model_b = st.selectbox(
+                model_b_name = st.selectbox(
                     "Modelo B:",
-                    available_models,
-                    index=min(1, len(available_models)-1)
+                    model_names,
+                    index=min(1, len(model_names)-1)
                 )
             
             if st.button("🔄 Comparar Modelos", width='stretch'):
+                # Encontrar los diccionarios completos de los modelos seleccionados
+                model_a = next(model for model in available_models if model['name'] == model_a_name)
+                model_b = next(model for model in available_models if model['name'] == model_b_name)
+                
                 comparison = analyzer.compare_models(model_a, model_b)
                 
                 if comparison:
@@ -1624,7 +1712,7 @@ def show_analysis_page():
         else:
             st.info("Necesitas al menos 2 modelos entrenados para comparar.")
     
-    with tab3:
+    with tab4:
         st.markdown("### 📊 Resultados del Entrenamiento")
 
         # Verificar si hay experimentos entrenados
@@ -1902,70 +1990,51 @@ def show_analysis_page():
     
     with tab5:
         
-        # Cargar errores comunes
-        common_errors = analyzer.get_common_errors()
+        # Cargar métricas actuales
+        metrics = analyzer.load_current_model_metrics()
         
-        if common_errors:
-            st.markdown("#### ⚠️ Errores Más Comunes")
+        if metrics:
+            # Cargar errores comunes
+            common_errors = analyzer.get_common_errors(metrics)
             
-            for error in common_errors[:5]:  # Top 5 errores
-                with st.container():
-                    st.markdown(f"**{error['actual']} → {error['predicted']}**")
-                    st.caption(f"Frecuencia: {error['count']} errores ({error['percentage']:.1f}%)")
-                    st.progress(error['percentage'] / 100)
-            
-            # Análisis de confianza
-            st.markdown("#### 📊 Distribución de Confianza en Errores")
-            confidence_data = analyzer.get_error_confidence_distribution()
-            
-            if not confidence_data.empty:
-                from src.visualizations import VisualizationManager
-                viz = VisualizationManager()
-                fig = viz.plot_confidence_histogram(confidence_data)
-                st.plotly_chart(fig, width='stretch')
-        else:
-            st.info("No hay datos de errores disponibles.")
-    
-    with tab5:
-        st.markdown("### 📋 Generar Reportes")
-        
-        # Tipos de reportes
-        report_type = st.selectbox(
-            "Tipo de Reporte:",
-            ["📊 Reporte de Métricas", "📈 Reporte de Entrenamiento", "🔍 Reporte de Errores", "📋 Reporte Completo"]
-        )
-        
-        # Opciones del reporte
-        with st.expander("⚙️ Opciones del Reporte"):
-            include_charts = st.checkbox("Incluir gráficos", value=True)
-            include_tables = st.checkbox("Incluir tablas", value=True)
-            include_recommendations = st.checkbox("Incluir recomendaciones", value=True)
-        
-        # Generar reporte
-        if st.button("📄 Generar Reporte", type="primary", width='stretch'):
-            with st.spinner("Generando reporte..."):
-                try:
-                    report_path = analyzer.generate_report(
-                        report_type=report_type,
-                        include_charts=include_charts,
-                        include_tables=include_tables,
-                        include_recommendations=include_recommendations
-                    )
-                    
-                    # Descargar reporte
-                    with open(report_path, 'rb') as f:
-                        st.download_button(
-                            label="📥 Descargar Reporte PDF",
-                            data=f,
-                            file_name=f"reporte_{report_type.lower().replace(' ', '_')}.pdf",
-                            mime="application/pdf",
-                            width='stretch'
-                        )
-                    
-                    st.success("✅ Reporte generado exitosamente!")
+            if common_errors:
+                st.markdown("#### ⚠️ Errores Más Comunes")
                 
-                except Exception as e:
-                    st.error(f"❌ Error generando reporte: {str(e)}")
+                # Mostrar top 5 errores
+                for idx, error in enumerate(common_errors[:5], 1):
+                    with st.container():
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**{idx}. {error['actual']} → {error['predicted']}**")
+                            st.progress(min(error['percentage'] / 20, 1.0))  # Normalizar a escala 0-1
+                        with col2:
+                            st.metric("Errores", error['count'])
+                            st.caption(f"{error['percentage']:.1f}%")
+                        st.markdown("---")
+                
+                # Tabla completa
+                with st.expander("📋 Ver Todos los Errores"):
+                    errors_df = pd.DataFrame(common_errors)
+                    errors_df.columns = ['Clase Real', 'Clase Predicha', 'Cantidad', 'Porcentaje (%)']
+                    st.dataframe(errors_df, use_container_width=True)
+                
+                # Análisis de confianza
+                st.markdown("#### 📊 Distribución de Confianza en Errores")
+                st.info("Esta métrica muestra cómo de confiado está el modelo en sus predicciones incorrectas. Idealmente, los errores deberían tener baja confianza.")
+                
+                confidence_data = analyzer.get_error_confidence_distribution()
+                
+                if not confidence_data.empty:
+                    from src.visualizations import VisualizationManager
+                    viz = VisualizationManager()
+                    fig = viz.plot_confidence_histogram(confidence_data)
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.success("✅ No se detectaron errores significativos en la clasificación.")
+        else:
+            st.info("ℹ️ No hay datos de errores disponibles. Entrena un modelo primero.")
+    
+
 
 def show_configuration_page():
     """Mostrar página de configuración"""
@@ -2381,11 +2450,7 @@ def show_configuration_page():
                     help="Comparar resultados entre diferentes modelos"
                 )
                 
-                enable_reports = st.checkbox(
-                    "Habilitar generación de reportes",
-                    value=config['dashboard']['enable_report_generation'],
-                    help="Generar reportes en PDF de los resultados"
-                )
+               
             
             # Guardar configuración
             submitted = st.form_submit_button("💾 Guardar Configuración del Dashboard", type="primary")
@@ -2397,7 +2462,6 @@ def show_configuration_page():
                 config['dashboard']['enable_camera'] = enable_camera
                 config['dashboard']['enable_batch_processing'] = enable_batch
                 config['dashboard']['enable_model_comparison'] = enable_comparison
-                config['dashboard']['enable_report_generation'] = enable_reports
                 
                 if save_configuration():
                     st.balloons()
